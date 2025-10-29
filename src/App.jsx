@@ -9,6 +9,7 @@ import './App.css'
 
 const GATEWAY_URL = 'http://localhost:8080'; // Для всех остальных запросов
 const AUTH_API_URL = `${GATEWAY_URL}/api/auth`;
+const AUTH_API_URL_SIGNIN = `${AUTH_API_URL}/register`;
 const TASKS_API_URL = `${GATEWAY_URL}/api/tasks`;
 
 function App() {
@@ -174,7 +175,7 @@ function App() {
         setAuthError('');
 
         try {
-            const response = await fetch(`${AUTH_API_URL}/register`, {
+            const response = await fetch(`${AUTH_API_URL_SIGNIN}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
