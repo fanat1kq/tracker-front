@@ -54,6 +54,7 @@ function App() {
     }, []);
 
     // Проверка JWT токена
+    // Проверка JWT токена
     const checkAuthentication = async () => {
         const token = localStorage.getItem('jwt');
         if (!token) {
@@ -76,7 +77,7 @@ function App() {
                 setUser(userData);
                 setIsAuthenticated(true);
                 setShowAuth(false);
-                loadTasks(token);
+                await loadTasks(); // Добавьте await
             } else {
                 localStorage.removeItem('jwt');
                 setIsAuthenticated(false);
@@ -99,20 +100,18 @@ function App() {
         setAuthError('');
     };
 
-    // Улучшенная функция логина
     const handleLogin = async (e) => {
         e.preventDefault();
         setLoading(true);
         setAuthError('');
 
         try {
-            console.log('Sending login request through Gateway:', `${AUTH_API_URL}/login`);
+            console.log('🔐 Sending login request...');
 
-            const response = await fetch(`${AUTH_API_URL}/login`, {  // ← Используйте AUTH_API_URL
+            const response = await fetch(`${AUTH_API_URL}/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     username: authForm.username,
@@ -120,29 +119,63 @@ function App() {
                 })
             });
 
-            console.log('Login response status:', response.status);
+            console.log('📥 Response status:', response.status);
+
+            // Получите RAW ответ для отладки
+            const responseText = await response.text();
+            console.log('📥 RAW response text:', responseText);
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(errorText || `Login failed: ${response.status}`);
+                throw new Error(`HTTP ${response.status}: ${responseText}`);
             }
 
-            const authData = await response.json();
+            // Попробуйте разные варианты парсинга
+            let authData;
+            try {
+                authData = JSON.parse(responseText);
+                console.log('✅ Parsed JSON response:', authData);
+            } catch (parseError) {
+                console.error('❌ Not JSON. Raw response:', responseText);
 
-            if (!authData.accessToken) {
-                throw new Error('No access token received');
+                // Может быть это plain text с токеном?
+                if (responseText.trim().length > 0) {
+                    console.log('📝 Response is plain text, might be token directly');
+                    authData = { accessToken: responseText.trim() };
+                } else {
+                    throw new Error('Empty response from server');
+                }
             }
 
-            // Сохраняем JWT в localStorage
-            localStorage.setItem('jwt', authData.accessToken);
-            console.log('JWT token saved');
+            // Проверяем ВСЕ возможные поля с токеном
+            const token = authData.access_token || authData.accessToken || authData.token || authData.jwt;
 
-            // Устанавливаем пользователя
+            if (!token) {
+                console.error('❌ No token found in response. Available fields:', Object.keys(authData));
+                console.error('❌ Full response data:', authData);
+                throw new Error('No JWT token received from server. Available fields: ' + Object.keys(authData).join(', '));
+            }
+
+            console.log('🎉 JWT Token received:', {
+                token: token,
+                length: token.length,
+                parts: token.split('.'),
+                isValidJWT: token.split('.').length === 3
+            });
+
+            // Сохраняем токен
+            localStorage.setItem('jwt', token);
+            console.log('💾 Token saved to localStorage');
+
+            // Проверяем что сохранилось
+            const savedToken = localStorage.getItem('jwt');
+            console.log('🔍 Verified saved token:', savedToken);
+
+            // Обновляем пользователя
             setUser({
-                id: authData.userId,
-                username: authData.username,
-                email: authData.email,
-                name: authData.name || authData.username,
+                id: authData.userId || authData.id || 1,
+                username: authData.username || authForm.username,
+                email: authData.email || `${authForm.username}@example.com`,
+                name: authData.name || authForm.username,
                 avatar: '👤',
                 joinDate: new Date().toLocaleDateString('ru-RU'),
                 role: authData.role || 'Пользователь',
@@ -152,12 +185,13 @@ function App() {
             setIsAuthenticated(true);
             setShowAuth(false);
 
-            // Загружаем задачи через Gateway (уже с JWT в header)
+            // Пробуем загрузить задачи
+            console.log('🚀 Attempting to load tasks with new token...');
             await loadTasks();
 
         } catch (error) {
-            console.error('Login error:', error);
-            setAuthError(error.message || 'Ошибка аутентификации');
+            console.error('❌ Login error:', error);
+            setAuthError(error.message);
         } finally {
             setLoading(false);
         }
@@ -221,15 +255,50 @@ function App() {
         });
     };
 
-    // Функции для работы с задачами
+    // В начале компонента App
+    console.log('🔐 Initial JWT:', localStorage.getItem('jwt'));
+
+// В функции loadTasks
     const loadTasks = async () => {
         const token = localStorage.getItem('jwt');
-        const response = await fetch('http://localhost:8080/api/tasks', {
-            headers: {
-                'Authorization': `Bearer ${token}`  // Gateway передаст этот header в Task Service
+        console.log('🔐 JWT Token for tasks request:', token);
+
+        if (!token) {
+            console.error('❌ No JWT token found in localStorage');
+            handleLogout();
+            return;
+        }
+
+        try {
+            console.log('📡 Loading tasks from:', `${TASKS_API_URL}`);
+
+            const response = await fetch(`${TASKS_API_URL}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('📥 Response status:', response.status);
+            console.log('📥 Response headers:', response.headers);
+
+            if (response.ok) {
+                const tasksData = await response.json();
+                console.log('✅ Tasks loaded successfully:', tasksData);
+                setTasks(tasksData);
+            } else if (response.status === 401) {
+                console.error('❌ 401 Unauthorized - token is invalid or expired');
+                // Попробуйте получить больше информации об ошибке
+                const errorText = await response.text();
+                console.error('❌ Error details:', errorText);
+                handleLogout();
+            } else {
+                console.error('❌ Failed to load tasks, status:', response.status);
             }
-        });
-        return response.json();
+        } catch (error) {
+            console.error('❌ Network error loading tasks:', error);
+        }
     };
 
     const addTask = async () => {
