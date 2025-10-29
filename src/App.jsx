@@ -1,10 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
+
+
+// const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || window.location.origin; // Gateway URL
+// const API_BASE_URL = window.location.origin;
+// const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
+// const TASKS_API_URL = `${API_BASE_URL}/api/tasks`;
+
+const GATEWAY_URL = 'http://localhost:8080'; // Для всех остальных запросов
+const AUTH_API_URL = `${GATEWAY_URL}/api/auth`;
+const TASKS_API_URL = `${GATEWAY_URL}/api/tasks`;
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [showAuth, setShowAuth] = useState(true);
     const [authMode, setAuthMode] = useState('login');
+    const [loading, setLoading] = useState(false);
+    const [authError, setAuthError] = useState('');
 
     // Состояния для аутентификации
     const [authForm, setAuthForm] = useState({
@@ -25,36 +37,57 @@ function App() {
 
     // Данные пользователя
     const [user, setUser] = useState({
-        id: 1,
-        username: 'user123',
-        email: 'user@example.com',
-        name: 'Иван Иванов',
+        id: null,
+        username: '',
+        email: '',
+        name: '',
         avatar: '👤',
-        joinDate: '15 января 2024',
-        role: 'Менеджер проектов',
-        department: 'Отдел разработки'
+        joinDate: '',
+        role: '',
+        department: ''
     });
 
-    // Настройки уведомлений
-    const [notificationSettings, setNotificationSettings] = useState({
-        emailNotifications: true,
-        taskReminders: true,
-        dailyDigest: false,
-        weeklyReport: true,
-        taskCompleted: true,
-        newTaskAssigned: false,
-        marketingEmails: false
-    });
+    // Проверка аутентификации при загрузке
+    useEffect(() => {
+        checkAuthentication();
+    }, []);
 
-    // Форма редактирования профиля
-    const [editForm, setEditForm] = useState({
-        username: user.username,
-        email: user.email,
-        name: user.name,
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-    });
+    // Проверка JWT токена
+    const checkAuthentication = async () => {
+        const token = localStorage.getItem('jwt');
+        if (!token) {
+            setIsAuthenticated(false);
+            setShowAuth(true);
+            return;
+        }
+
+        try {
+            const response = await fetch(`${AUTH_API_URL}/validate`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const userData = await response.json();
+                setUser(userData);
+                setIsAuthenticated(true);
+                setShowAuth(false);
+                loadTasks(token);
+            } else {
+                localStorage.removeItem('jwt');
+                setIsAuthenticated(false);
+                setShowAuth(true);
+            }
+        } catch (error) {
+            console.error('Auth check failed:', error);
+            localStorage.removeItem('jwt');
+            setIsAuthenticated(false);
+            setShowAuth(true);
+        }
+    };
 
     // Функции аутентификации
     const handleAuthInputChange = (field, value) => {
@@ -62,38 +95,233 @@ function App() {
             ...prev,
             [field]: value
         }));
+        setAuthError('');
     };
 
-    const handleLogin = (e) => {
+    // Улучшенная функция логина
+    const handleLogin = async (e) => {
         e.preventDefault();
-        if (authForm.username && authForm.password) {
+        setLoading(true);
+        setAuthError('');
+
+        try {
+            console.log('Sending login request through Gateway:', `${AUTH_API_URL}/login`);
+
+            const response = await fetch(`${AUTH_API_URL}/login`, {  // ← Используйте AUTH_API_URL
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: authForm.username,
+                    password: authForm.password
+                })
+            });
+
+            console.log('Login response status:', response.status);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || `Login failed: ${response.status}`);
+            }
+
+            const authData = await response.json();
+
+            if (!authData.accessToken) {
+                throw new Error('No access token received');
+            }
+
+            // Сохраняем JWT в localStorage
+            localStorage.setItem('jwt', authData.accessToken);
+            console.log('JWT token saved');
+
+            // Устанавливаем пользователя
+            setUser({
+                id: authData.userId,
+                username: authData.username,
+                email: authData.email,
+                name: authData.name || authData.username,
+                avatar: '👤',
+                joinDate: new Date().toLocaleDateString('ru-RU'),
+                role: authData.role || 'Пользователь',
+                department: authData.department || 'Отдел разработки'
+            });
+
             setIsAuthenticated(true);
             setShowAuth(false);
-            setAuthForm({
-                username: '',
-                email: '',
-                password: '',
-                confirmPassword: '',
-                rememberMe: false
-            });
+
+            // Загружаем задачи через Gateway (уже с JWT в header)
+            await loadTasks();
+
+        } catch (error) {
+            console.error('Login error:', error);
+            setAuthError(error.message || 'Ошибка аутентификации');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleRegister = (e) => {
+    const handleRegister = async (e) => {
         e.preventDefault();
-        if (authForm.username && authForm.email && authForm.password && authForm.password === authForm.confirmPassword) {
-            setIsAuthenticated(true);
-            setShowAuth(false);
-            setAuthForm({
-                username: '',
-                email: '',
-                password: '',
-                confirmPassword: '',
-                rememberMe: false
+
+        if (authForm.password !== authForm.confirmPassword) {
+            setAuthError('Пароли не совпадают');
+            return;
+        }
+
+        setLoading(true);
+        setAuthError('');
+
+        try {
+            const response = await fetch(`${AUTH_API_URL}/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    username: authForm.username,
+                    email: authForm.email,
+                    password: authForm.password,
+                    name: authForm.username // Можно добавить поле имени
+                })
             });
+
+            if (response.ok) {
+                // После успешной регистрации автоматически логиним
+                await handleLogin(e);
+            } else {
+                const errorData = await response.json();
+                setAuthError(errorData.message || 'Ошибка регистрации');
+            }
+        } catch (error) {
+            console.error('Registration error:', error);
+            setAuthError('Ошибка соединения с сервером');
+        } finally {
+            setLoading(false);
         }
     };
 
+    const handleLogout = () => {
+        localStorage.removeItem('jwt');
+        setIsAuthenticated(false);
+        setShowAuth(true);
+        setAuthMode('login');
+        setTasks([]);
+        setUser({
+            id: null,
+            username: '',
+            email: '',
+            name: '',
+            avatar: '👤',
+            joinDate: '',
+            role: '',
+            department: ''
+        });
+    };
+
+    // Функции для работы с задачами
+    const loadTasks = async () => {
+        const token = localStorage.getItem('jwt');
+        const response = await fetch('http://localhost:8080/api/tasks', {
+            headers: {
+                'Authorization': `Bearer ${token}`  // Gateway передаст этот header в Task Service
+            }
+        });
+        return response.json();
+    };
+
+    const addTask = async () => {
+        if (newTaskTitle.trim() === '') return;
+
+        const token = localStorage.getItem('jwt');
+        if (!token) {
+            handleLogout();
+            return;
+        }
+
+        try {
+            const response = await fetch(`${TASKS_API_URL}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: newTaskTitle.trim(),
+                    description: '',
+                    priority: 'medium'
+                })
+            });
+
+            if (response.ok) {
+                const newTask = await response.json();
+                setTasks(prev => [...prev, newTask]);
+                setNewTaskTitle('');
+            } else if (response.status === 401) {
+                handleLogout();
+            }
+        } catch (error) {
+            console.error('Failed to add task:', error);
+        }
+    };
+
+    const updateTask = async (updatedTask) => {
+        const token = localStorage.getItem('jwt');
+        if (!token) {
+            handleLogout();
+            return;
+        }
+
+        try {
+            const response = await fetch(`${TASKS_API_URL}/${updatedTask.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updatedTask)
+            });
+
+            if (response.ok) {
+                setTasks(prev => prev.map(task =>
+                    task.id === updatedTask.id ? updatedTask : task
+                ));
+            } else if (response.status === 401) {
+                handleLogout();
+            }
+        } catch (error) {
+            console.error('Failed to update task:', error);
+        }
+    };
+
+    const deleteTask = async (taskId) => {
+        const token = localStorage.getItem('jwt');
+        if (!token) {
+            handleLogout();
+            return;
+        }
+
+        try {
+            const response = await fetch(`${TASKS_API_URL}/${taskId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                setTasks(prev => prev.filter(task => task.id !== taskId));
+                setIsModalOpen(false);
+            } else if (response.status === 401) {
+                handleLogout();
+            }
+        } catch (error) {
+            console.error('Failed to delete task:', error);
+        }
+    };
+
+    // Остальные функции остаются практически без изменений
     const switchAuthMode = () => {
         setAuthMode(prev => prev === 'login' ? 'register' : 'login');
         setAuthForm({
@@ -103,52 +331,14 @@ function App() {
             confirmPassword: '',
             rememberMe: false
         });
+        setAuthError('');
     };
 
-    const handleLogout = () => {
-        setIsAuthenticated(false);
-        setShowAuth(true);
-        setAuthMode('login');
-    };
-
-    // Добавление новой задачи
-    const addTask = () => {
-        if (newTaskTitle.trim() === '') return;
-
-        const newTask = {
-            id: Date.now(),
-            title: newTaskTitle.trim(),
-            description: '',
-            completed: false,
-            active: false,
-            createdAt: new Date().toLocaleString('ru-RU'),
-            priority: 'medium'
-        };
-
-        setTasks([...tasks, newTask]);
-        setNewTaskTitle('');
-    };
-
-    // Удаление задачи
-    const deleteTask = (taskId) => {
-        setTasks(tasks.filter(task => task.id !== taskId));
-        setIsModalOpen(false);
-    };
-
-    // Обновление задачи
-    const updateTask = (updatedTask) => {
-        setTasks(tasks.map(task =>
-            task.id === updatedTask.id ? updatedTask : task
-        ));
-    };
-
-    // Открытие модального окна
     const openTaskModal = (task) => {
         setSelectedTask({...task});
         setIsModalOpen(true);
     };
 
-    // Закрытие модального окна
     const closeModal = () => {
         if (selectedTask) {
             updateTask(selectedTask);
@@ -157,7 +347,7 @@ function App() {
         setSelectedTask(null);
     };
 
-    // Drag & Drop функции
+    // Drag & Drop функции (остаются без изменений)
     const handleDragStart = (event, task) => {
         setDraggedTask(task);
         event.dataTransfer.effectAllowed = 'move';
@@ -180,7 +370,7 @@ function App() {
         event.currentTarget.classList.remove('drag-over');
     };
 
-    const handleDrop = (event, targetColumn) => {
+    const handleDrop = async (event, targetColumn) => {
         event.preventDefault();
         event.currentTarget.classList.remove('drag-over');
 
@@ -199,33 +389,27 @@ function App() {
             updatedTask.completed = true;
         }
 
-        updateTask(updatedTask);
+        await updateTask(updatedTask);
         setDraggedTask(null);
     };
 
+    // Остальные функции UI (handleProfileSave, handleNotificationSettingsSave и т.д.)
+    // остаются без изменений, так как они работают с локальным состоянием
+
     const handleProfileSave = () => {
+        // Здесь можно добавить вызов API для обновления профиля
         setUser({
             ...user,
-            username: editForm.username,
-            email: editForm.email,
-            name: editForm.name
+            username: user.username, // из формы редактирования
+            email: user.email,
+            name: user.name
         });
-
-        if (editForm.newPassword && editForm.newPassword === editForm.confirmPassword) {
-            console.log('Password changed');
-        }
-
         setIsProfileOpen(false);
-        setEditForm({
-            ...editForm,
-            currentPassword: '',
-            newPassword: '',
-            confirmPassword: ''
-        });
     };
 
     const handleNotificationSettingsSave = () => {
-        console.log('Notification settings saved:', notificationSettings);
+        // Здесь можно добавить вызов API для сохранения настроек
+        console.log('Notification settings saved');
         setIsNotificationsConfigOpen(false);
     };
 
@@ -236,10 +420,31 @@ function App() {
         }));
     };
 
-    // Фильтрация задач
+    // Фильтрация задач (без изменений)
     const newTasks = tasks.filter(task => !task.active && !task.completed);
     const activeTasks = tasks.filter(task => task.active && !task.completed);
     const completedTasks = tasks.filter(task => task.completed);
+
+    // Настройки уведомлений (без изменений)
+    const [notificationSettings, setNotificationSettings] = useState({
+        emailNotifications: true,
+        taskReminders: true,
+        dailyDigest: false,
+        weeklyReport: true,
+        taskCompleted: true,
+        newTaskAssigned: false,
+        marketingEmails: false
+    });
+
+    // Форма редактирования профиля (без изменений)
+    const [editForm, setEditForm] = useState({
+        username: user.username,
+        email: user.email,
+        name: user.name,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+    });
 
     // Если пользователь не аутентифицирован, показываем окно входа/регистрации
     if (!isAuthenticated && showAuth) {
@@ -281,6 +486,12 @@ function App() {
                             </button>
                         </div>
 
+                        {authError && (
+                            <div className="auth-error">
+                                {authError}
+                            </div>
+                        )}
+
                         <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="auth-form">
                             <div className="form-group">
                                 <label>Имя пользователя</label>
@@ -291,6 +502,7 @@ function App() {
                                     placeholder="Введите ваш логин"
                                     required
                                     className="auth-input"
+                                    disabled={loading}
                                 />
                             </div>
 
@@ -304,6 +516,7 @@ function App() {
                                         placeholder="Введите ваш email"
                                         required
                                         className="auth-input"
+                                        disabled={loading}
                                     />
                                 </div>
                             )}
@@ -317,6 +530,7 @@ function App() {
                                     placeholder="Введите ваш пароль"
                                     required
                                     className="auth-input"
+                                    disabled={loading}
                                 />
                             </div>
 
@@ -330,6 +544,7 @@ function App() {
                                         placeholder="Повторите пароль"
                                         required
                                         className="auth-input"
+                                        disabled={loading}
                                     />
                                 </div>
                             )}
@@ -342,6 +557,7 @@ function App() {
                                             checked={authForm.rememberMe}
                                             onChange={(e) => handleAuthInputChange('rememberMe', e.target.checked)}
                                             className="checkbox-input"
+                                            disabled={loading}
                                         />
                                         <span className="checkmark"></span>
                                         Запомнить меня
@@ -350,31 +566,37 @@ function App() {
                                 </div>
                             )}
 
-                            <button type="submit" className="auth-submit-btn">
-                                {authMode === 'login' ? 'Войти в систему' : 'Создать аккаунт'}
+                            <button
+                                type="submit"
+                                className="auth-submit-btn"
+                                disabled={loading}
+                            >
+                                {loading ? 'Загрузка...' :
+                                    authMode === 'login' ? 'Войти в систему' : 'Создать аккаунт'}
                             </button>
 
-                            <div className="auth-divider">
-                                <span>или</span>
-                            </div>
+                            {/* Остальная часть UI остается без изменений */}
+                            {/*<div className="auth-divider">*/}
+                            {/*    <span>или</span>*/}
+                            {/*</div>*/}
 
-                            <button type="button" className="auth-social-btn">
-                                <span className="social-icon">🔵</span>
-                                Продолжить через Google
-                            </button>
+                            {/*<button type="button" className="auth-social-btn" disabled={loading}>*/}
+                            {/*    <span className="social-icon">🔵</span>*/}
+                            {/*    Продолжить через Google*/}
+                            {/*</button>*/}
 
                             <div className="auth-switch">
                                 {authMode === 'login' ? (
                                     <p>
                                         Нет аккаунта?{' '}
-                                        <button type="button" onClick={switchAuthMode} className="auth-link">
+                                        <button type="button" onClick={switchAuthMode} className="auth-link" disabled={loading}>
                                             Зарегистрироваться
                                         </button>
                                     </p>
                                 ) : (
                                     <p>
                                         Уже есть аккаунт?{' '}
-                                        <button type="button" onClick={switchAuthMode} className="auth-link">
+                                        <button type="button" onClick={switchAuthMode} className="auth-link" disabled={loading}>
                                             Войти
                                         </button>
                                     </p>
@@ -390,6 +612,7 @@ function App() {
             </div>
         );
     }
+
 
     // Основное приложение
     return (

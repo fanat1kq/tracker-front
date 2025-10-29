@@ -1809,4 +1809,14 @@ input:checked + .slider.enhanced:before {
   .profile-stats-grid {
     grid-template-columns: 1fr;
   }
+  /*.auth-error {*/
+  /*  background: #fef2f2;*/
+  /*  border: 1px solid #fecaca;*/
+  /*  color: #dc2626;*/
+  /*  padding: 12px 16px;*/
+  /*  border-radius: 8px;*/
+  /*  margin-bottom: 20px;*/
+  /*  font-size: 0.9em;*/
+  /*  text-align: center;*/
+  /*}*/
 }
