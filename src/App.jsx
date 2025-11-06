@@ -48,13 +48,11 @@ function App() {
         department: ''
     });
 
-    // Проверка аутентификации при загрузке
+
     useEffect(() => {
         checkAuthentication();
     }, []);
 
-    // Проверка JWT токена
-    // Проверка JWT токена
     const checkAuthentication = async () => {
         const token = localStorage.getItem('jwt');
         if (!token) {
@@ -74,10 +72,30 @@ function App() {
 
             if (response.ok) {
                 const userData = await response.json();
-                setUser(userData);
+                console.log('🔍 User data from /validate:', userData);
+
+                // Извлекаем userId ДО установки состояния
+                const userId = userData.id || userData.userId || userData.sub;
+                console.log('🔍 Extracted user ID:', userId);
+
+                // Устанавливаем пользователя
+                setUser({
+                    id: userId,
+                    username: userData.username,
+                    email: userData.email,
+                    name: userData.name || userData.username,
+                    avatar: '👤',
+                    joinDate: new Date().toLocaleDateString('ru-RU'),
+                    role: userData.role || 'Пользователь',
+                    department: userData.department || 'Отдел разработки'
+                });
+
                 setIsAuthenticated(true);
                 setShowAuth(false);
-                await loadTasks(); // Добавьте await
+
+                // Передаем userId напрямую в loadTasks
+                await loadTasks(userId);
+
             } else {
                 localStorage.removeItem('jwt');
                 setIsAuthenticated(false);
@@ -121,7 +139,6 @@ function App() {
 
             console.log('📥 Response status:', response.status);
 
-            // Получите RAW ответ для отладки
             const responseText = await response.text();
             console.log('📥 RAW response text:', responseText);
 
@@ -129,15 +146,12 @@ function App() {
                 throw new Error(`HTTP ${response.status}: ${responseText}`);
             }
 
-            // Попробуйте разные варианты парсинга
             let authData;
             try {
                 authData = JSON.parse(responseText);
                 console.log('✅ Parsed JSON response:', authData);
             } catch (parseError) {
                 console.error('❌ Not JSON. Raw response:', responseText);
-
-                // Может быть это plain text с токеном?
                 if (responseText.trim().length > 0) {
                     console.log('📝 Response is plain text, might be token directly');
                     authData = { accessToken: responseText.trim() };
@@ -146,33 +160,25 @@ function App() {
                 }
             }
 
-            // Проверяем ВСЕ возможные поля с токеном
             const token = authData.access_token || authData.accessToken || authData.token || authData.jwt;
 
             if (!token) {
                 console.error('❌ No token found in response. Available fields:', Object.keys(authData));
-                console.error('❌ Full response data:', authData);
-                throw new Error('No JWT token received from server. Available fields: ' + Object.keys(authData).join(', '));
+                throw new Error('No JWT token received from server');
             }
 
-            console.log('🎉 JWT Token received:', {
-                token: token,
-                length: token.length,
-                parts: token.split('.'),
-                isValidJWT: token.split('.').length === 3
-            });
+            console.log('🎉 JWT Token received');
 
             // Сохраняем токен
             localStorage.setItem('jwt', token);
-            console.log('💾 Token saved to localStorage');
 
-            // Проверяем что сохранилось
-            const savedToken = localStorage.getItem('jwt');
-            console.log('🔍 Verified saved token:', savedToken);
+            // Извлекаем userId ДО установки состояния
+            const userId = authData.userId || authData.id;
+            console.log('🔍 Extracted user ID from login:', userId);
 
             // Обновляем пользователя
             setUser({
-                id: authData.userId || authData.id || 1,
+                id: userId,
                 username: authData.username || authForm.username,
                 email: authData.email || `${authForm.username}@example.com`,
                 name: authData.name || authForm.username,
@@ -185,9 +191,8 @@ function App() {
             setIsAuthenticated(true);
             setShowAuth(false);
 
-            // Пробуем загрузить задачи
-            console.log('🚀 Attempting to load tasks with new token...');
-            await loadTasks();
+            // Передаем userId напрямую в loadTasks
+            await loadTasks(userId);
 
         } catch (error) {
             console.error('❌ Login error:', error);
@@ -259,7 +264,7 @@ function App() {
     console.log('🔐 Initial JWT:', localStorage.getItem('jwt'));
 
 // В функции loadTasks
-    const loadTasks = async () => {
+    const loadTasks = async (userIdFromAuth = null) => {
         const token = localStorage.getItem('jwt');
         console.log('🔐 JWT Token for tasks request:', token);
 
@@ -270,7 +275,11 @@ function App() {
         }
 
         try {
-            console.log('📡 Loading tasks from:', `${TASKS_API_URL}`);
+            console.log('📡 Loading all tasks from server');
+
+            // Используем переданный userId или берем из state
+            const currentUserId = userIdFromAuth || user.id;
+            console.log('👤 Current user ID for filtering:', currentUserId);
 
             const response = await fetch(`${TASKS_API_URL}`, {
                 method: 'GET',
@@ -281,17 +290,28 @@ function App() {
             });
 
             console.log('📥 Response status:', response.status);
-            console.log('📥 Response headers:', response.headers);
 
             if (response.ok) {
-                const tasksData = await response.json();
-                console.log('✅ Tasks loaded successfully:', tasksData);
-                setTasks(tasksData);
+                const allTasks = await response.json();
+                console.log('✅ All tasks loaded:', allTasks);
+
+                if (currentUserId) {
+                    const userTasks = allTasks.filter(task => {
+                        const isUserTask = task.userId === currentUserId;
+                        console.log(`📋 Task ${task.id}: userId=${task.userId}, currentUserId=${currentUserId}, match=${isUserTask}`);
+                        return isUserTask;
+                    });
+
+                    console.log('🎯 Filtered tasks for current user:', userTasks);
+                    setTasks(userTasks);
+                } else {
+                    console.error('❌ Current user ID not available');
+                    // Временно показываем все задачи для отладки
+                    console.log('⚠️ Showing ALL tasks for debugging');
+                    setTasks(allTasks);
+                }
             } else if (response.status === 401) {
                 console.error('❌ 401 Unauthorized - token is invalid or expired');
-                // Попробуйте получить больше информации об ошибке
-                const errorText = await response.text();
-                console.error('❌ Error details:', errorText);
                 handleLogout();
             } else {
                 console.error('❌ Failed to load tasks, status:', response.status);
@@ -311,6 +331,20 @@ function App() {
         }
 
         try {
+            const userId = user.id;
+
+            if (!userId) {
+                console.error('❌ User ID not found in addTask');
+                // Попробуем перезагрузить задачи чтобы получить актуального пользователя
+                await loadTasks();
+                return;
+            }
+
+            console.log('📝 Creating task for user:', userId);
+
+            const taskTitle = newTaskTitle.trim();
+            setNewTaskTitle('');
+
             const response = await fetch(`${TASKS_API_URL}`, {
                 method: 'POST',
                 headers: {
@@ -318,21 +352,25 @@ function App() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    title: newTaskTitle.trim(),
+                    title: taskTitle,
                     description: '',
-                    priority: 'medium'
+                    priority: 'medium',
+                    userId: userId
                 })
             });
 
             if (response.ok) {
-                const newTask = await response.json();
-                setTasks(prev => [...prev, newTask]);
-                setNewTaskTitle('');
+                console.log('✅ Task created successfully');
+                await loadTasks(userId); // Передаем userId при перезагрузке
             } else if (response.status === 401) {
                 handleLogout();
+            } else {
+                console.error('❌ Failed to create task:', response.status);
+                setNewTaskTitle(taskTitle);
             }
         } catch (error) {
-            console.error('Failed to add task:', error);
+            console.error('❌ Failed to add task:', error);
+            setNewTaskTitle(taskTitle);
         }
     };
 
@@ -344,24 +382,53 @@ function App() {
         }
 
         try {
+            // Определяем статус только если он не задан явно
+            let status = updatedTask.status;
+            if (!status) {
+                if (!updatedTask.active && !updatedTask.completed) {
+                    status = 'NEW';
+                } else if (updatedTask.active && !updatedTask.completed) {
+                    status = 'IN_PROGRESS';
+                } else if (updatedTask.completed) {
+                    status = 'COMPLETED';
+                }
+            }
+
+            console.log('🔄 Updating task:', {
+                taskId: updatedTask.id,
+                title: updatedTask.title,
+                description: updatedTask.description,
+                status: status
+            });
+
+            // Отправляем ВСЕ данные задачи
             const response = await fetch(`${TASKS_API_URL}/${updatedTask.id}`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(updatedTask)
+                body: JSON.stringify({
+                    title: updatedTask.title,
+                    description: updatedTask.description,
+                    status: status
+                    // Можно добавить другие поля если нужно
+                })
             });
 
             if (response.ok) {
+                // Обновляем задачу в локальном состоянии
                 setTasks(prev => prev.map(task =>
-                    task.id === updatedTask.id ? updatedTask : task
+                    task.id === updatedTask.id ? { ...updatedTask, status: status } : task
                 ));
+                console.log('✅ Task updated successfully');
             } else if (response.status === 401) {
                 handleLogout();
+            } else {
+                console.error('❌ Failed to update task:', response.status);
             }
         } catch (error) {
-            console.error('Failed to update task:', error);
+            console.error('❌ Failed to update task:', error);
         }
     };
 
@@ -448,17 +515,16 @@ function App() {
 
         let updatedTask = { ...draggedTask };
 
+        // Обновляем только статус, не трогая другие поля
         if (targetColumn === 'new') {
-            updatedTask.active = false;
-            updatedTask.completed = false;
+            updatedTask.status = 'NEW';
         } else if (targetColumn === 'active') {
-            updatedTask.active = true;
-            updatedTask.completed = false;
+            updatedTask.status = 'IN_PROGRESS';
         } else if (targetColumn === 'completed') {
-            updatedTask.active = true;
-            updatedTask.completed = true;
+            updatedTask.status = 'COMPLETED';
         }
 
+        console.log('🎯 Task dropped to:', targetColumn, 'new status:', updatedTask.status);
         await updateTask(updatedTask);
         setDraggedTask(null);
     };
@@ -491,9 +557,9 @@ function App() {
     };
 
     // Фильтрация задач (без изменений)
-    const newTasks = tasks.filter(task => !task.active && !task.completed);
-    const activeTasks = tasks.filter(task => task.active && !task.completed);
-    const completedTasks = tasks.filter(task => task.completed);
+    const newTasks = tasks.filter(task => task.status === 'NEW');
+    const activeTasks = tasks.filter(task => task.status === 'IN_PROGRESS');
+    const completedTasks = tasks.filter(task => task.status === 'COMPLETED');
 
     // Настройки уведомлений (без изменений)
     const [notificationSettings, setNotificationSettings] = useState({
