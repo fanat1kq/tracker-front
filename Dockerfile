@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:18-alpine as builder
 
 WORKDIR /app
 
@@ -14,14 +14,16 @@ COPY . .
 # Build the app
 RUN npm run build
 
-# Install serve without cache flag issue
-RUN npm install -g serve
+# Production stage
+FROM nginx:alpine
+
+# Copy built app from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx config
+COPY nginx.conf /etc/nginx/nginx.conf
 
 EXPOSE 3000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
-
-# Start the app - remove problematic -c flag
-CMD ["serve", "-s", "dist", "-l", "3000"]

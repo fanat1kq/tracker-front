@@ -7,7 +7,7 @@ import './App.css'
 // const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
 // const TASKS_API_URL = `${API_BASE_URL}/api/tasks`;
 
-const GATEWAY_URL = 'http://localhost:8080'; // Для всех остальных запросов
+const GATEWAY_URL = process.env.REACT_APP_API_URL || '';
 const AUTH_API_URL = `${GATEWAY_URL}/api/auth`;
 const AUTH_API_URL_SIGNIN = `${AUTH_API_URL}/register`;
 const TASKS_API_URL = `${GATEWAY_URL}/api/tasks`;
