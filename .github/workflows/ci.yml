@@ -22,7 +22,6 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'  # Вернули обратно
 
       - name: Debug file structure
         run: |
@@ -30,22 +29,17 @@ jobs:
           pwd
           echo "File structure:"
           ls -la
-          echo "Checking tracker-front:"
-          ls -la tracker-front/ || echo "tracker-front directory not found"
-          echo "Looking for package.json files:"
-          find . -name "package.json" -type f
+          echo "Package.json content:"
+          cat package.json || echo "No package.json in root"
 
       - name: Install dependencies
         run: npm ci
-        working-directory: tracker-front
 
       - name: Run tests
         run: npm test -- --coverage --watchAll=false
-        working-directory: tracker-front
 
       - name: Build application
         run: npm run build
-        working-directory: tracker-front
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
@@ -72,7 +66,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: tracker-front
+          context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
