@@ -2,7 +2,7 @@ import { API_URLS, APP_CONFIG } from '../config/api';
 
 class ApiService {
     constructor() {
-        this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+        this.baseURL = process.env.REACT_APP_API_URL || '/api';
         this.timeout = APP_CONFIG.API_TIMEOUT;
     }
 
