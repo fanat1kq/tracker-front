@@ -22,11 +22,22 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: 'tracker-front/package-lock.json'  # Исправленный путь
+          cache-dependency-path: '**/package-lock.json'  # Вернули обратно
+
+      - name: Debug file structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "File structure:"
+          ls -la
+          echo "Checking tracker-front:"
+          ls -la tracker-front/ || echo "tracker-front directory not found"
+          echo "Looking for package.json files:"
+          find . -name "package.json" -type f
 
       - name: Install dependencies
         run: npm ci
-        working-directory: tracker-front  # Без точки в начале
+        working-directory: tracker-front
 
       - name: Run tests
         run: npm test -- --coverage --watchAll=false
@@ -61,7 +72,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: tracker-front  # Без точки в начале
+          context: tracker-front
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -87,5 +98,9 @@ jobs:
             
             docker stop front || true
             docker rm front || true
+            
             docker pull ${{ env.IMAGE_NAME }}:master
+            
             docker-compose -f docker-compose.prod.yml up -d front
+            
+            docker image prune -f
