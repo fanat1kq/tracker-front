@@ -1402,7 +1402,7 @@ function App() {
                         <div className="modal-body notifications-modal-body">
                             <div className="notifications-categories">
                                 <div className="notification-category">
-                                    <h3>📧 Email уведомления</h3>
+                                    <h3>📧 Уведомления</h3>
                                     <div className="notifications-list">
                                         <div className="notification-item enhanced">
                                             <div className="notification-info">
