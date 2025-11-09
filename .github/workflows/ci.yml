@@ -17,15 +17,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'maven'
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./tracker-front
+
+      - name: Run tests
+        run: npm test -- --coverage --watchAll=false
+        working-directory: ./tracker-front
 
       - name: Build application
-        run: mvn --batch-mode --update-snapshots package -DskipTests
+        run: npm run build
+        working-directory: ./tracker-front
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -50,12 +59,15 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./tracker-front
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          build-args: |
+            # Добавьте build args если нужно
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
 
   deploy:
     runs-on: ubuntu-latest
@@ -71,10 +83,18 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin <<< "${{ secrets.DOCKERHUB_TOKEN }}"
+            docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" -p "${{ secrets.DOCKERHUB_TOKEN }}"
+            cd ~/app/task-tracker
+            
+            # Останавливаем и удаляем только front контейнер
             docker stop front || true
             docker rm front || true
-            docker pull --platform linux/amd64 ${{ env.IMAGE_NAME }}:master
-            cd ~/app/task-tracker/tracker-front
-            docker-compose -f docker-compose.prod.yml up -d
-            docker rmi $(docker images "${{ env.IMAGE_NAME }}" --filter "before=${{ env.IMAGE_NAME }}:master" -q) || true
+            
+            # Pull последнего образа
+            docker pull ${{ env.IMAGE_NAME }}:master
+            
+            # Перезапускаем только front сервис
+            docker-compose -f docker-compose.prod.yml up -d front
+            
+            # Очистка старых образов
+            docker image prune -f
