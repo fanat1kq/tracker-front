@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "docker:build": "docker build -t taskflow-app .",
-    "docker:run": "docker run -p 3000:80 taskflow-app",
+    "docker:run": "docker run -p 3001:80 taskflow-app",
     "docker:compose": "docker-compose up -d",
     "docker:compose-dev": "docker-compose up"
   },
