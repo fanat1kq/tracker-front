@@ -7,7 +7,7 @@ export default defineConfig({
     port: 3001,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080', // Ваш Gateway порт
+        target: 'http://gateway:8080', // Ваш Gateway порт
         changeOrigin: true,
         secure: false,
         configure: (proxy, _options) => {
