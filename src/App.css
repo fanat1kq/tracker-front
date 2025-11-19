@@ -1824,14 +1824,30 @@ input:checked + .slider.enhanced:before {
   .profile-stats-grid {
     grid-template-columns: 1fr;
   }
-  /*.auth-error {*/
-  /*  background: #fef2f2;*/
-  /*  border: 1px solid #fecaca;*/
-  /*  color: #dc2626;*/
-  /*  padding: 12px 16px;*/
-  /*  border-radius: 8px;*/
-  /*  margin-bottom: 20px;*/
-  /*  font-size: 0.9em;*/
-  /*  text-align: center;*/
-  /*}*/
+  /* Альтернативный стиль - более современный */
+  .auth-social-btn.modern-google {
+    background: linear-gradient(145deg, #ffffff, #f8f9fa);
+    border: 1.5px solid transparent;
+    background-clip: padding-box;
+    position: relative;
+  }
+
+  .auth-social-btn.modern-google::before {
+    content: '';
+    position: absolute;
+    top: -1.5px;
+    left: -1.5px;
+    right: -1.5px;
+    bottom: -1.5px;
+    background: linear-gradient(145deg, #4285F4, #34A853, #FBBC05, #EA4335);
+    border-radius: 12px;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .auth-social-btn.modern-google:hover::before {
+    opacity: 1;
+  }
+
 }
