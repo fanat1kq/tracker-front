@@ -3,17 +3,15 @@ import './App.css'
 
 // Динамическое определение API URL
 const getApiBaseUrl = () => {
-    // В Docker - используем имя сервиса gateway
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
         return 'http://gateway:8080';
     }
-    // Локальная разработка
     return 'http://localhost:8080';
 };
 
 const API_BASE_URL = getApiBaseUrl();
 const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
-const AUTH_API_URL_SIGNIN = `${API_BASE_URL}/register`;
+const AUTH_API_URL_SIGNIN = `${AUTH_API_URL}/register`;
 const TASKS_API_URL = `${API_BASE_URL}/api/tasks`;
 
 function App() {
