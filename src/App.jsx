@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 
-const GATEWAY_URL = "";
-const AUTH_API_URL = `${GATEWAY_URL}/api/auth`;
-const AUTH_API_URL_SIGNIN = `${AUTH_API_URL}/register`;
-const TASKS_API_URL = `${GATEWAY_URL}/api/tasks`;
+const AUTH_API_URL = `/api/auth`;
+const AUTH_API_URL_SIGNIN = `/register`;
+const TASKS_API_URL = `/api/tasks`;
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
