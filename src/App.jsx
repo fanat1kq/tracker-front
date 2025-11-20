@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 
-// const GATEWAY_URL = import.meta.env.VITE_API_URL || "";
-// const GATEWAY_URL = "http://gateway:8080";
 const GATEWAY_URL = "";
 const AUTH_API_URL = `${GATEWAY_URL}/api/auth`;
 const AUTH_API_URL_SIGNIN = `${AUTH_API_URL}/register`;
