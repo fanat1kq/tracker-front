@@ -4,7 +4,7 @@ import './App.css'
 // Динамическое определение API URL
 const getApiBaseUrl = () => {
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        return 'http://gateway:8080';
+        return 'http://176.109.106.218:8080';
     }
     return 'http://localhost:8080';
 };
